@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Smart Study Assistant – Results</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+
+<body class="bg-slate-900 text-slate-100 min-h-screen">
+  <div class="max-w-6xl mx-auto py-8 px-4">
+    <header class="flex items-center justify-between mb-6">
+      <div>
+        <h1 class="text-2xl font-semibold">Smart Study Assistant</h1>
+        <p class="text-sm text-slate-300">
+          Multi-Agent PDF Analyzer – Generated Study Pack
+        </p>
+      </div>
+      <div class="space-x-2">
+        <a href="index.html"
+          class="inline-flex items-center rounded-md bg-slate-700 px-3 py-2 text-xs font-semibold text-slate-50 hover:bg-slate-600">Upload
+          another PDF</a>
+        <button id="download-btn"
+          class="inline-flex items-center rounded-md bg-emerald-500 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-600">
+          Download Study Pack PDF
+        </button>
+      </div>
+    </header>
+
+    <p id="status" class="text-sm text-slate-300 mb-4">Loading results...</p>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <section class="lg:col-span-1 bg-slate-800/60 border border-slate-700 rounded-xl p-4">
+        <h2 class="text-lg font-semibold mb-2">Important Topics</h2>
+        <p class="text-xs text-slate-400 mb-3">
+          Weightage based on TF-IDF + keyword scoring (High / Medium / Low).
+        </p>
+        <ul id="topics" class="space-y-3 text-sm"></ul>
+      </section>
+
+      <section class="lg:col-span-2 space-y-4">
+        <div class="bg-slate-800/60 border border-slate-700 rounded-xl p-4">
+          <h2 class="text-lg font-semibold mb-2">Summaries</h2>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+            <div>
+              <h3 class="font-semibold mb-1">Short Summary</h3>
+              <p id="short-summary" class="text-slate-200 text-xs md:text-sm whitespace-pre-wrap"></p>
+            </div>
+            <div>
+              <h3 class="font-semibold mb-1">Detailed Summary</h3>
+              <p id="detailed-summary" class="text-slate-200 text-xs md:text-sm whitespace-pre-wrap"></p>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-slate-800/60 border border-slate-700 rounded-xl p-4">
+          <h2 class="text-lg font-semibold mb-2">MCQs (Per Chapter)</h2>
+          <div id="mcqs" class="space-y-4 text-sm max-h-[28rem] overflow-y-auto pr-2"></div>
+        </div>
+
+        <div class="bg-slate-800/60 border border-slate-700 rounded-xl p-4">
+          <h2 class="text-lg font-semibold mb-2">Revision Notes</h2>
+          <pre id="notes"
+            class="whitespace-pre-wrap text-xs md:text-sm font-mono bg-slate-900/60 rounded-md p-3 border border-slate-700 max-h-[20rem] overflow-y-auto"></pre>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    const apiBase = window.localStorage.getItem("ssa_api_base") || "http://localhost:8000";
+
+    function getSessionId() {
+      const params = new URLSearchParams(window.location.search);
+      return params.get("session_id");
+    }
+
+    async function loadResults() {
+      const sessionId = getSessionId();
+      const statusEl = document.getElementById("status");
+      if (!sessionId) {
+        statusEl.textContent = "Missing session_id in URL.";
+        return;
+      }
+
+      try {
+        statusEl.textContent = "Fetching analysis results...";
+
+        const [processRes, summaryRes, mcqRes, notesRes] = await Promise.all([
+          fetch(`${apiBase}/process?session_id=${sessionId}`, { method: "POST" }),
+          fetch(`${apiBase}/generate_summary?session_id=${sessionId}`, { method: "POST" }),
+          fetch(`${apiBase}/generate_mcq?session_id=${sessionId}`, { method: "POST" }),
+          fetch(`${apiBase}/generate_notes?session_id=${sessionId}`, { method: "POST" }),
+        ]);
+
+        if (!processRes.ok)
+          throw new Error("Failed to fetch extracted text/topics (process).");
+        if (!summaryRes.ok)
+          throw new Error("Failed to fetch summaries.");
+        if (!mcqRes.ok) throw new Error("Failed to fetch MCQs.");
+        if (!notesRes.ok) throw new Error("Failed to fetch notes.");
+
+        const processData = await processRes.json();
+        const summaryData = await summaryRes.json();
+        const mcqData = await mcqRes.json();
+        const notesData = await notesRes.json();
+
+        renderTopics(processData.topics || []);
+        renderSummaries(summaryData.summaries || {});
+        renderMcqs(mcqData.mcqs || []);
+        renderNotes(notesData.notes || {});
+
+        statusEl.textContent = "Done. You can now review the study pack or download the PDF.";
+      } catch (err) {
+        console.error(err);
+        statusEl.textContent = `Error: ${err.message || err}`;
+      }
+    }
+
+    function renderTopics(topics) {
+      const ul = document.getElementById("topics");
+      ul.innerHTML = "";
+      if (!topics.length) {
+        ul.innerHTML = '<li class="text-xs text-slate-400">No topics detected.</li>';
+        return;
+      }
+      topics.forEach((t) => {
+        const li = document.createElement("li");
+        const badgeColor =
+          t.weightage === "High"
+            ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+            : t.weightage === "Medium"
+              ? "bg-amber-500/10 text-amber-300 border-amber-500/40"
+              : "bg-slate-700/60 text-slate-200 border-slate-500/60";
+        li.className = `border rounded-md p-2 ${badgeColor}`;
+        li.innerHTML = `
+            <div class="flex items-center justify-between mb-1">
+              <span class="font-semibold text-xs">${t.title}</span>
+              <span class="text-[10px] uppercase tracking-wide">${t.weightage}</span>
+            </div>
+            <p class="text-[11px] text-slate-200">Score: ${t.score.toFixed(3)}</p>
+            ${t.snippet ? `<p class="text-[11px] mt-1 text-slate-300">${t.snippet}...</p>` : ""}
+          `;
+        ul.appendChild(li);
+      });
+    }
+
+    function renderSummaries(summaries) {
+      document.getElementById("short-summary").textContent =
+        summaries.short_summary || "Not available.";
+      document.getElementById("detailed-summary").textContent =
+        summaries.detailed_summary || "Not available.";
+    }
+
+    function renderMcqs(mcqChapters) {
+      const container = document.getElementById("mcqs");
+      container.innerHTML = "";
+      if (!mcqChapters.length) {
+        container.innerHTML = '<p class="text-xs text-slate-400">No MCQs generated.</p>';
+        return;
+      }
+      mcqChapters.forEach((chapter) => {
+        const wrapper = document.createElement("div");
+        wrapper.className = "border border-slate-700 rounded-md p-3";
+        wrapper.innerHTML = `<h3 class="font-semibold text-sm mb-2">${chapter.title || "Untitled Chapter"
+          }</h3>`;
+
+        (chapter.mcqs || []).forEach((item, idx) => {
+          const block = document.createElement("div");
+          block.className = "mb-2 text-xs";
+          block.innerHTML = `
+              <p class="font-medium">Q${idx + 1}. ${item.question || ""}</p>
+              ${(item.options || [])
+              .map(
+                (opt, i) =>
+                  `<p class="ml-3">${["A", "B", "C", "D"][i] || "-"}) ${opt}</p>`
+              )
+              .join("")}
+              <p class="ml-1 mt-1 text-emerald-300">Answer: ${item.answer || ""}</p>
+              ${item.explanation
+              ? `<p class="ml-1 text-slate-300">Explanation: ${item.explanation}</p>`
+              : ""
+            }
+            `;
+          wrapper.appendChild(block);
+        });
+
+        container.appendChild(wrapper);
+      });
+    }
+
+    function renderNotes(notes) {
+      document.getElementById("notes").textContent =
+        notes.notes_markdown || "No notes generated.";
+    }
+
+    document.getElementById("download-btn").addEventListener("click", async () => {
+      const sessionId = getSessionId();
+      if (!sessionId) return;
+      try {
+        const res = await fetch(`${apiBase}/final_pdf?session_id=${sessionId}`);
+        if (!res.ok) throw new Error("Failed to download PDF.");
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "study_pack.pdf";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+      } catch (err) {
+        alert(err.message || err);
+      }
+    });
+
+    window.addEventListener("DOMContentLoaded", loadResults);
+  </script>
+</body>
+
+</html>

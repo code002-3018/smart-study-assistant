@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Smart Study Assistant – Upload PDF</title>
+    <!-- Tailwind via CDN for simplicity -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="bg-slate-900 text-slate-100 min-h-screen flex items-center justify-center">
+    <div class="max-w-xl w-full bg-slate-800/80 border border-slate-700 rounded-xl shadow-xl p-8">
+      <h1 class="text-2xl font-semibold mb-2 text-center">
+        Smart Study Assistant
+      </h1>
+      <p class="text-sm text-slate-300 mb-6 text-center">
+        Multi-Agent PDF Analyzer – upload your notes / syllabus / PYQs and get a
+        complete study pack.
+      </p>
+
+      <form id="upload-form" class="space-y-4">
+        <div>
+          <label
+            for="pdf"
+            class="block text-sm font-medium text-slate-200 mb-1"
+            >Upload PDF</label
+          >
+          <input
+            id="pdf"
+            name="pdf"
+            type="file"
+            accept="application/pdf"
+            class="block w-full text-sm text-slate-100 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-emerald-500 file:text-white hover:file:bg-emerald-600 cursor-pointer bg-slate-900 border border-slate-700 rounded-md p-1"
+            required
+          />
+        </div>
+
+        <button
+          type="submit"
+          class="w-full inline-flex justify-center rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400"
+        >
+          Upload &amp; Analyze
+        </button>
+      </form>
+
+      <p id="status" class="mt-4 text-sm text-slate-300"></p>
+    </div>
+
+    <script>
+      const apiBase = window.localStorage.getItem("ssa_api_base") || "http://localhost:8000";
+
+      const form = document.getElementById("upload-form");
+      const statusEl = document.getElementById("status");
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const fileInput = document.getElementById("pdf");
+        if (!fileInput.files.length) return;
+
+        const file = fileInput.files[0];
+        statusEl.textContent = "Uploading and creating session...";
+
+        const formData = new FormData();
+        formData.append("file", file);
+
+        try {
+          const uploadRes = await fetch(`${apiBase}/upload`, {
+            method: "POST",
+            body: formData,
+          });
+
+          if (!uploadRes.ok) {
+            const err = await uploadRes.json().catch(() => ({}));
+            throw new Error(err.detail || "Upload failed");
+          }
+
+          const { session_id } = await uploadRes.json();
+          statusEl.textContent = "Running multi-agent pipeline (this may take a minute)...";
+
+          // Run processing + summaries + MCQs + notes sequentially
+          const processRes = await fetch(`${apiBase}/process?session_id=${session_id}`, {
+            method: "POST",
+          });
+          if (!processRes.ok) throw new Error("Processing failed");
+
+          const summaryRes = await fetch(
+            `${apiBase}/generate_summary?session_id=${session_id}`,
+            { method: "POST" }
+          );
+          if (!summaryRes.ok) throw new Error("Summary generation failed");
+
+          const mcqRes = await fetch(`${apiBase}/generate_mcq?session_id=${session_id}`, {
+            method: "POST",
+          });
+          if (!mcqRes.ok) throw new Error("MCQ generation failed");
+
+          const notesRes = await fetch(`${apiBase}/generate_notes?session_id=${session_id}`, {
+            method: "POST",
+          });
+          if (!notesRes.ok) throw new Error("Notes generation failed");
+
+          // Redirect to results page with session id
+          window.location.href = `result.html?session_id=${encodeURIComponent(session_id)}`;
+        } catch (err) {
+          console.error(err);
+          statusEl.textContent = `Error: ${err.message || err}`;
+        }
+      });
+    </script>
+  </body>
+</html>

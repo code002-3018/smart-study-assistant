@@ -1,0 +1,33 @@
+# Environment variables (contains API keys)
+.env
+
+# Python virtual environment
+.venv/
+venv/
+env/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Uploads directory (user-uploaded files)
+uploads/
+
+# IDE specific files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# Test files (if you want to exclude them)
+test_deepseek.py
+test_gemini.py
+
+# Logs
+*.log

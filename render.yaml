@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: smart-study-assistant
+    runtime: python
+    env: python
+    region: oregon
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port 10000
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: LLM_PROVIDER
+        value: gemini
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: DEEPSEEK_API_KEY
+        sync: false
+      - key: HF_API_KEY
+        sync: false
